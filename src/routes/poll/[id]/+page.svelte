@@ -1,7 +1,7 @@
 <script>
   import { page } from '$app/stores';
   import { db } from '$lib/firebase';
-  import { ref, onValue, update } from 'firebase/database';
+  import { ref, onValue, update, increment } from 'firebase/database';
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
 
@@ -9,6 +9,7 @@
   let voted = false;
   let pollId = $page.params.id;
   let loading = true;
+  let copied = false;
 
   onMount(() => {
     const pollRef = ref(db, `polls/${pollId}`);
@@ -24,6 +25,12 @@
 
     // Check if already voted
     voted = localStorage.getItem(`voted_${pollId}`) === 'true';
+
+    // Track view count (once per browser session)
+    if (!sessionStorage.getItem(`viewed_${pollId}`)) {
+      update(ref(db), { [`polls/${pollId}/views`]: increment(1) });
+      sessionStorage.setItem(`viewed_${pollId}`, 'true');
+    }
   });
 
   async function vote(optionIndex) {
@@ -41,9 +48,11 @@
     setTimeout(() => goto(`/results/${pollId}`), 800);
   }
 
-  function copyLink() {
-    navigator.clipboard.writeText(window.location.href);
-    alert('Link copied to clipboard!');
+  async function copyLink() {
+    await navigator.clipboard.writeText(window.location.href);
+    await update(ref(db), { [`polls/${pollId}/shares`]: increment(1) });
+    copied = true;
+    setTimeout(() => copied = false, 2000);
   }
 </script>
 
@@ -69,7 +78,19 @@
     </div>
   {:else}
     <div class="container">
+      {#if poll.imageUrl}
+        <div class="poll-image">
+          <img src={poll.imageUrl} alt="Poll illustration" />
+        </div>
+      {/if}
       <h1>{poll.question}</h1>
+      {#if poll.views || poll.shares}
+        <div class="poll-stats">
+          <span class="stat-info">{poll.views || 0} views</span>
+          <span class="stat-divider">•</span>
+          <span class="stat-info">{poll.shares || 0} shares</span>
+        </div>
+      {/if}
       
       {#if !voted}
         <p class="instruction">Choose your answer:</p>
@@ -90,8 +111,8 @@
       {/if}
 
       <div class="actions">
-        <button class="btn-secondary" on:click={copyLink}>
-          Copy Poll Link
+        <button class="btn-secondary" class:copied on:click={copyLink}>
+          {copied ? 'Copied!' : 'Copy Poll Link'}
         </button>
         <a href="/results/{pollId}" class="btn-secondary">
           View Results
@@ -299,5 +320,41 @@
   .btn-primary:hover {
     background: rgba(255, 255, 255, 0.4);
     transform: translateY(-2px);
+  }
+
+  .poll-image {
+    border-radius: 16px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+
+  .poll-image img {
+    width: 100%;
+    max-height: 220px;
+    object-fit: cover;
+    display: block;
+  }
+
+  .poll-stats {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .stat-info {
+    display: inline;
+  }
+
+  .stat-divider {
+    opacity: 0.4;
+  }
+
+  .btn-secondary.copied {
+    background: rgba(16, 185, 129, 0.3);
+    border-color: rgba(16, 185, 129, 0.5);
   }
 </style>

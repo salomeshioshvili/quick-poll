@@ -1,13 +1,15 @@
 <script>
   import { page } from '$app/stores';
   import { db } from '$lib/firebase';
-  import { ref, onValue } from 'firebase/database';
+  import { ref, onValue, update, increment } from 'firebase/database';
   import { onMount } from 'svelte';
 
   let poll = null;
   let pollId = $page.params.id;
   let totalVotes = 0;
   let loading = true;
+  let showQR = false;
+  let copied = false;
 
   onMount(() => {
     const pollRef = ref(db, `polls/${pollId}`);
@@ -23,10 +25,20 @@
     });
   });
 
-  function copyVoteLink() {
-    const voteLink = `${window.location.origin}/poll/${pollId}`;
-    navigator.clipboard.writeText(voteLink);
-    alert('Vote link copied to clipboard!');
+  function getPollUrl() {
+    return `${window.location.origin}/poll/${pollId}`;
+  }
+
+  function getQrUrl() {
+    return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(getPollUrl())}&qzone=1`;
+  }
+
+  async function copyVoteLink() {
+    const voteLink = getPollUrl();
+    await navigator.clipboard.writeText(voteLink);
+    await update(ref(db), { [`polls/${pollId}/shares`]: increment(1) });
+    copied = true;
+    setTimeout(() => copied = false, 2000);
   }
 
   function getWinner() {
@@ -69,11 +81,21 @@
     </div>
   {:else}
     <div class="container">
+      {#if poll.imageUrl}
+        <div class="poll-image">
+          <img src={poll.imageUrl} alt="Poll illustration" />
+        </div>
+      {/if}
       <h1>{poll.question}</h1>
-      <div class="total-votes">
-        <span class="votes-count">{totalVotes}</span>
-        <span class="votes-label">{totalVotes === 1 ? 'vote' : 'votes'}</span>
-        <span class="live-indicator">● Live</span>
+      <div class="poll-stats-bar">
+        <div class="stat-item">
+          <span class="stat-label">Views</span>
+          <span class="stat-value">{poll.views || 0}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Shares</span>
+          <span class="stat-value">{poll.shares || 0}</span>
+        </div>
       </div>
 
       <div class="results">
@@ -107,9 +129,20 @@
         {/each}
       </div>
 
+      {#if showQR}
+        <div class="qr-section">
+          <p class="qr-label">Scan to vote</p>
+          <img class="qr-code" src={getQrUrl()} alt="QR Code for poll" />
+          <p class="qr-url">{getPollUrl()}</p>
+        </div>
+      {/if}
+
       <div class="actions">
-        <button class="btn-primary" on:click={copyVoteLink}>
-           Share Poll Link
+        <button class="btn-primary" class:copied on:click={copyVoteLink}>
+          {copied ? 'Link Copied!' : ' Share Poll Link'}
+        </button>
+        <button class="btn-secondary qr-btn" on:click={() => showQR = !showQR}>
+          {showQR ? 'Hide QR' : 'QR Code'}
         </button>
         <a href="/poll/{pollId}" class="btn-secondary">
           ← Back to Vote
@@ -187,38 +220,19 @@
   }
 
   .total-votes {
-    text-align: center;
-    margin-bottom: 1.5rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.6rem;
-    flex-wrap: wrap;
+    display: none;
   }
 
   .votes-count {
-    font-size: 2rem;
-    font-weight: 800;
-    color: white;
+    display: none;
   }
 
   .votes-label {
-    font-size: 0.9rem;
-    color: rgba(255, 255, 255, 0.8);
+    display: none;
   }
 
   .live-indicator {
-    color: #4ade80;
-    font-size: 0.8rem;
-    font-weight: 700;
-    animation: pulse 2s ease-in-out infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.6; }
+    display: none;
   }
 
   .results {
@@ -388,5 +402,98 @@
     .btn-primary {
       grid-column: auto;
     }
+  }
+
+  .poll-image {
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+  }
+
+  .poll-image img {
+    width: 100%;
+    max-height: 180px;
+    object-fit: cover;
+    display: block;
+  }
+
+  .poll-stats-bar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.8rem;
+    margin: 1rem 0 1.5rem;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .stat-item {
+    text-align: center;
+  }
+
+  .stat-label {
+    display: block;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(255, 255, 255, 0.5);
+    margin-bottom: 0.35rem;
+    font-weight: 600;
+  }
+
+  .stat-value {
+    display: block;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: white;
+  }
+
+  .qr-section {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    padding: 1.2rem 1rem;
+    text-align: center;
+    margin-bottom: 1rem;
+    animation: fadeIn 0.25s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .qr-label {
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 0.75rem;
+    margin: 0 0 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+  }
+
+  .qr-code {
+    border-radius: 10px;
+    display: block;
+    margin: 0 auto;
+    width: 150px;
+    height: 150px;
+  }
+
+  .qr-url {
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 0.68rem;
+    margin: 0.6rem 0 0;
+    word-break: break-all;
+  }
+
+  .btn-primary.copied {
+    background: rgba(16, 185, 129, 0.3);
+    border-color: rgba(16, 185, 129, 0.5);
+  }
+
+  .qr-btn {
+    grid-column: 1 / -1;
   }
 </style>

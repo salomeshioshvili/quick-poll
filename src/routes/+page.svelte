@@ -6,6 +6,8 @@
   let question = '';
   let options = ['', ''];
   let creating = false;
+  let imagePreview = null;
+  let imageError = '';
 
   function addOption() {
     options = [...options, ''];
@@ -13,6 +15,24 @@
 
   function removeOption(index) {
     options = options.filter((_, i) => i !== index);
+  }
+
+  function handleImageUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 500 * 1024) {
+      imageError = 'Image must be under 500KB';
+      return;
+    }
+    imageError = '';
+    const reader = new FileReader();
+    reader.onload = (ev) => { imagePreview = ev.target.result; };
+    reader.readAsDataURL(file);
+  }
+
+  function removeImage() {
+    imagePreview = null;
+    imageError = '';
   }
 
   async function createPoll() {
@@ -31,7 +51,10 @@
         text,
         votes: 0
       })),
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      views: 0,
+      shares: 0,
+      ...(imagePreview ? { imageUrl: imagePreview } : {})
     });
 
     goto(`/poll/${newPollRef.key}`);
@@ -84,6 +107,25 @@
         <button type="button" class="add-btn" on:click={addOption}>
           + Add Another Option
         </button>
+      </div>
+
+      <div class="form-group">
+        <label>Question Image <span class="optional">(optional)</span></label>
+        {#if imagePreview}
+          <div class="image-preview">
+            <img src={imagePreview} alt="Preview" />
+            <button type="button" class="remove-image-btn" on:click={removeImage}>✕ Remove</button>
+          </div>
+        {:else}
+          <label class="image-upload-area">
+            <input type="file" accept="image/*" on:change={handleImageUpload} />
+            <span>Click to upload image</span>
+            <span class="upload-hint">PNG, JPG, GIF up to 500KB</span>
+          </label>
+        {/if}
+        {#if imageError}
+          <p class="image-error">{imageError}</p>
+        {/if}
       </div>
 
       <button type="submit" class="create-btn" disabled={creating}>
@@ -239,5 +281,80 @@
   .create-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .optional {
+    font-weight: 400;
+    font-size: 0.8rem;
+    opacity: 0.7;
+  }
+
+  .image-upload-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 1.5rem;
+    border: 2px dashed rgba(255, 255, 255, 0.4);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.9rem;
+    font-weight: normal;
+  }
+
+  .image-upload-area:hover {
+    border-color: rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .image-upload-area input[type="file"] {
+    display: none;
+  }
+
+
+  .upload-hint {
+    font-size: 0.75rem;
+    opacity: 0.6;
+  }
+
+  .image-preview {
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .image-preview img {
+    width: 100%;
+    max-height: 200px;
+    object-fit: cover;
+    display: block;
+    border-radius: 12px;
+  }
+
+  .remove-image-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.3rem 0.6rem;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: background 0.2s;
+  }
+
+  .remove-image-btn:hover {
+    background: rgba(239, 68, 68, 0.8);
+  }
+
+  .image-error {
+    color: #fca5a5;
+    font-size: 0.85rem;
+    margin: 0.4rem 0 0;
   }
 </style>
